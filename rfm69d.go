@@ -8,6 +8,7 @@ import (
 
 	"github.com/davecheney/gpio"
 	"github.com/fulr/rfm69"
+	"github.com/fulr/spidev"
 )
 
 const (
@@ -23,7 +24,7 @@ func main() {
 	}
 	defer pin.Close()
 
-	spiBus, err := rfm69.NewSPIDevice("/dev/spidev0.0")
+	spiBus, err := spidev.NewSPIDevice("/dev/spidev0.0")
 	if err != nil {
 		panic(err)
 	}
