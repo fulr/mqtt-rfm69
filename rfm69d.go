@@ -26,11 +26,11 @@ const (
 )
 
 type payload struct {
-	nodeID   int16   //node ID (1xx, 2xx, 3xx);  1xx = basement, 2xx = main floor, 3xx = outside
-	deviceID int16   //sensor ID (2, 3, 4, 5)
-	var1     uint32  //uptime in ms
-	var2     float32 //sensor data?
-	var3     float32 //battery condition?
+	NodeID   int16   //node ID (1xx, 2xx, 3xx);  1xx = basement, 2xx = main floor, 3xx = outside
+	DeviceID int16   //sensor ID (2, 3, 4, 5)
+	Var1     uint32  //uptime in ms
+	Var2     float32 //sensor data?
+	Var3     float32 //battery condition?
 }
 
 var f = func(client *MQTT.MqttClient, msg MQTT.Message) {
@@ -89,7 +89,7 @@ func main() {
 			binary.Read(buf, binary.LittleEndian, &p)
 			log.Println(p)
 			topic := fmt.Sprintf("/sensor/%d/%d", data.FromAddress, 1)
-			receipt := c.Publish(MQTT.QOS_ZERO, topic, fmt.Sprintf("%f", p.var2))
+			receipt := c.Publish(MQTT.QOS_ZERO, topic, fmt.Sprintf("%f", p.Var2))
 			<-receipt
 		case <-sigint:
 			quit <- 1
