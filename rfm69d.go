@@ -73,7 +73,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	rxChan, txChan, quit := rfm.Loop()
+	rxChan, _, quit := rfm.Loop()
 
 	sigint := make(chan os.Signal, 1)
 	signal.Notify(sigint, os.Interrupt, os.Kill)
