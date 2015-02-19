@@ -26,11 +26,10 @@ const (
 )
 
 type payload struct {
-	NodeID   int16   //node ID (1xx, 2xx, 3xx);  1xx = basement, 2xx = main floor, 3xx = outside
-	DeviceID int16   //sensor ID (2, 3, 4, 5)
-	Var1     uint32  //uptime in ms
-	Var2     float32 //sensor data?
-	Var3     float32 //battery condition?
+	Type int16   //sensor ID (2, 3, 4, 5)
+	Var1 uint32  //uptime in ms
+	Var2 float32 //sensor data?
+	Var3 float32 //battery condition?
 }
 
 var f = func(client *MQTT.MqttClient, msg MQTT.Message) {
