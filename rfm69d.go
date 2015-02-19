@@ -82,14 +82,20 @@ func main() {
 	for {
 		select {
 		case data := <-rxChan:
-			log.Print("main got data")
-			log.Print(data)
 			buf := bytes.NewReader(data.Data)
 			binary.Read(buf, binary.LittleEndian, &p)
-			log.Println(p)
-			topic := fmt.Sprintf("/sensor/%d/%d", data.FromAddress, 1)
-			receipt := c.Publish(MQTT.QOS_ZERO, topic, fmt.Sprintf("%f", p.Var2))
+			log.Println("payload", p)
+			topic := fmt.Sprintf("/sensor/%d/", data.FromAddress)
+			receipt := c.Publish(MQTT.QOS_ZERO, topic+"rssi", fmt.Sprintf("%d", data.Rssi))
 			<-receipt
+			switch p.Type {
+			case 6:
+				receipt := c.Publish(MQTT.QOS_ZERO, topic+"temp", fmt.Sprintf("%f", p.Var2))
+				<-receipt
+				receipt = c.Publish(MQTT.QOS_ZERO, topic+"hum", fmt.Sprintf("%f", p.Var3))
+				<-receipt
+			}
+
 		case <-sigint:
 			quit <- 1
 			<-quit
