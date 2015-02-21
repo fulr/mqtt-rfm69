@@ -86,7 +86,7 @@ func main() {
 			buf := bytes.NewReader(data.Data)
 			binary.Read(buf, binary.LittleEndian, &p)
 			log.Println("payload", p)
-			topic := fmt.Sprintf("/sensor/%d/", data.FromAddress)
+			topic := fmt.Sprintf("/sensor/node%d_", data.FromAddress)
 			receipt := c.Publish(MQTT.QOS_ZERO, topic+"rssi", fmt.Sprintf("%d", data.Rssi))
 			<-receipt
 			switch p.Type {
@@ -95,7 +95,7 @@ func main() {
 				<-receipt
 				receipt = c.Publish(MQTT.QOS_ZERO, topic+"hum", fmt.Sprintf("%f", p.Var3))
 				<-receipt
-				receipt = c.Publish(MQTT.QOS_ZERO, topic+"bat", fmt.Sprintf("%f", p.Var3))
+				receipt = c.Publish(MQTT.QOS_ZERO, topic+"bat", fmt.Sprintf("%f", p.VBat))
 				<-receipt
 			}
 
