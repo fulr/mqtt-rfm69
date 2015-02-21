@@ -26,10 +26,11 @@ const (
 )
 
 type payload struct {
-	Type int16   //sensor ID (2, 3, 4, 5)
-	Var1 uint32  //uptime in ms
-	Var2 float32 //sensor data?
-	Var3 float32 //battery condition?
+	Type int16   // sensor type (2, 3, 4, 5)
+	Var1 uint32  // uptime in ms
+	Var2 float32 // Temp
+	Var3 float32 // Humidity
+	VBat float32 // V Battery
 }
 
 var f = func(client *MQTT.MqttClient, msg MQTT.Message) {
@@ -93,6 +94,8 @@ func main() {
 				receipt := c.Publish(MQTT.QOS_ZERO, topic+"temp", fmt.Sprintf("%f", p.Var2))
 				<-receipt
 				receipt = c.Publish(MQTT.QOS_ZERO, topic+"hum", fmt.Sprintf("%f", p.Var3))
+				<-receipt
+				receipt = c.Publish(MQTT.QOS_ZERO, topic+"bat", fmt.Sprintf("%f", p.Var3))
 				<-receipt
 			}
 
