@@ -85,7 +85,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	c.StartSubscription(func(client *MQTT.MqttClient, msg MQTT.Message) {
+	receipt, err := c.StartSubscription(func(client *MQTT.MqttClient, msg MQTT.Message) {
 		command := string(msg.Payload())
 		log.Println(msg.Topic(), command)
 		on := byte(0)
@@ -100,6 +100,12 @@ func main() {
 			RequestAck:  true,
 		}
 	}, topicFilter)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	<-receipt
 
 	for {
 		select {
