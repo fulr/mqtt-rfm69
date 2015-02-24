@@ -86,6 +86,8 @@ func main() {
 	}
 
 	c.StartSubscription(func(client *MQTT.MqttClient, msg MQTT.Message) {
+		log.Println(msg.Topic(), string(msg.Payload()))
+
 		txChan <- rfm69.Data{
 			ToAddress:   21,
 			FromAddress: nodeID,
