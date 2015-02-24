@@ -86,12 +86,17 @@ func main() {
 	}
 
 	c.StartSubscription(func(client *MQTT.MqttClient, msg MQTT.Message) {
-		log.Println(msg.Topic(), string(msg.Payload()))
+		command := string(msg.Payload())
+		log.Println(msg.Topic(), command)
+		on := byte(0)
+		if command == "ON" {
+			on = 1
+		}
 
 		txChan <- rfm69.Data{
 			ToAddress:   21,
 			FromAddress: nodeID,
-			Data:        []byte{1, 1},
+			Data:        []byte{1, on},
 			RequestAck:  true,
 		}
 	}, topicFilter)
