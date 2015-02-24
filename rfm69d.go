@@ -73,12 +73,26 @@ func main() {
 		log.Fatal(err)
 	}
 
-	rxChan, _, quit := rfm.Loop()
+	rxChan, txChan, quit := rfm.Loop()
 
 	sigint := make(chan os.Signal, 1)
 	signal.Notify(sigint, os.Interrupt, os.Kill)
 
 	var p payload
+
+	topicFilter, err := MQTT.NewTopicFilter("/actor/#", 0)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	c.StartSubscription(func(client *MQTT.MqttClient, msg MQTT.Message) {
+		txChan <- rfm69.Data{
+			ToAddress:   21,
+			FromAddress: nodeID,
+			Data:        []byte{1, 1},
+			RequestAck:  true,
+		}
+	}, topicFilter)
 
 	for {
 		select {
