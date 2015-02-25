@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 
 	MQTT "git.eclipse.org/gitroot/paho/org.eclipse.paho.mqtt.golang.git"
 	"github.com/davecheney/gpio"
@@ -26,11 +28,14 @@ const (
 )
 
 type payload struct {
-	Type int16   // sensor type (2, 3, 4, 5)
-	Var1 uint32  // uptime in ms
-	Var2 float32 // Temp
-	Var3 float32 // Humidity
-	VBat float32 // V Battery
+	Type   int16  // sensor type (2, 3, 4, 5)
+	Uptime uint32 // uptime in ms
+}
+
+type payload6 struct {
+	Temperature float32 // Temp
+	Humidity    float32 // Humidity
+	VBat        float32 // V Battery
 }
 
 var f = func(client *MQTT.MqttClient, msg MQTT.Message) {
@@ -38,11 +43,43 @@ var f = func(client *MQTT.MqttClient, msg MQTT.Message) {
 	fmt.Printf("MSG: %s\n", msg.Payload())
 }
 
+func actorHandler(txChan chan rfm69.Data) func(client *MQTT.MqttClient, msg MQTT.Message) {
+	return func(client *MQTT.MqttClient, msg MQTT.Message) {
+		command := string(msg.Payload())
+		log.Println(msg.Topic(), command)
+
+		on := byte(0)
+		if command == "ON" {
+			on = 1
+		}
+
+		parts := strings.Split(msg.Topic(), "/")
+
+		node, err := strconv.Atoi(parts[2])
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		pin, err := strconv.Atoi(parts[3])
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		txChan <- rfm69.Data{
+			ToAddress:  byte(node),
+			Data:       []byte{byte(pin), on},
+			RequestAck: true,
+		}
+	}
+}
+
 func main() {
 	log.Print("Start")
 
 	opts := MQTT.NewClientOptions().AddBroker(mqttBroker).SetClientId(clientID)
 	opts.SetDefaultPublishHandler(f)
+	opts.SetCleanSession(true)
 
 	c := MQTT.NewClient(opts)
 	_, err := c.Start()
@@ -78,28 +115,12 @@ func main() {
 	sigint := make(chan os.Signal, 1)
 	signal.Notify(sigint, os.Interrupt, os.Kill)
 
-	var p payload
-
 	topicFilter, err := MQTT.NewTopicFilter("/actor/#", 0)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	receipt, err := c.StartSubscription(func(client *MQTT.MqttClient, msg MQTT.Message) {
-		command := string(msg.Payload())
-		log.Println(msg.Topic(), command)
-		on := byte(0)
-		if command == "ON" {
-			on = 1
-		}
-
-		txChan <- rfm69.Data{
-			ToAddress:   21,
-			FromAddress: nodeID,
-			Data:        []byte{1, on},
-			RequestAck:  true,
-		}
-	}, topicFilter)
+	receipt, err := c.StartSubscription(actorHandler(txChan), topicFilter)
 
 	if err != nil {
 		log.Fatal(err)
@@ -110,25 +131,29 @@ func main() {
 	for {
 		select {
 		case data := <-rxChan:
+			var p payload
 			buf := bytes.NewReader(data.Data)
 			binary.Read(buf, binary.LittleEndian, &p)
 			log.Println("payload", p)
-			topic := fmt.Sprintf("/sensor/node%d_", data.FromAddress)
+			topic := fmt.Sprintf("/sensor/%d/", data.FromAddress)
 			receipt := c.Publish(MQTT.QOS_ZERO, topic+"rssi", fmt.Sprintf("%d", data.Rssi))
 			<-receipt
 			switch p.Type {
 			case 6:
-				receipt := c.Publish(MQTT.QOS_ZERO, topic+"temp", fmt.Sprintf("%f", p.Var2))
+				var p6 payload6
+				binary.Read(buf, binary.LittleEndian, &p6)
+				receipt = c.Publish(MQTT.QOS_ZERO, topic+"temp", fmt.Sprintf("%f", p6.Temperature))
 				<-receipt
-				receipt = c.Publish(MQTT.QOS_ZERO, topic+"hum", fmt.Sprintf("%f", p.Var3))
+				receipt = c.Publish(MQTT.QOS_ZERO, topic+"hum", fmt.Sprintf("%f", p6.Humidity))
 				<-receipt
-				receipt = c.Publish(MQTT.QOS_ZERO, topic+"bat", fmt.Sprintf("%f", p.VBat))
+				receipt = c.Publish(MQTT.QOS_ZERO, topic+"bat", fmt.Sprintf("%f", p6.VBat))
 				<-receipt
 			}
 
 		case <-sigint:
 			quit <- 1
 			<-quit
+			c.Disconnect(250)
 			return
 		}
 	}
