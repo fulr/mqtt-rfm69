@@ -142,6 +142,7 @@ func main() {
 			case 6:
 				var p6 payload6
 				binary.Read(buf, binary.LittleEndian, &p6)
+				log.Println("payload6", p6)
 				receipt = c.Publish(MQTT.QOS_ZERO, topic+"temp", fmt.Sprintf("%f", p6.Temperature))
 				<-receipt
 				receipt = c.Publish(MQTT.QOS_ZERO, topic+"hum", fmt.Sprintf("%f", p6.Humidity))
