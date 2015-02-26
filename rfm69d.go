@@ -39,7 +39,7 @@ var f = func(client *MQTT.MqttClient, msg MQTT.Message) {
 	fmt.Printf("MSG: %s\n", msg.Payload())
 }
 
-func actorHandler(ch chan *rfm69.Data) func(client *MQTT.MqttClient, msg MQTT.Message) {
+func actorHandler(tx chan *rfm69.Data) func(client *MQTT.MqttClient, msg MQTT.Message) {
 	return func(client *MQTT.MqttClient, msg MQTT.Message) {
 		command := string(msg.Payload())
 		log.Println(msg.Topic(), command)
@@ -58,7 +58,7 @@ func actorHandler(ch chan *rfm69.Data) func(client *MQTT.MqttClient, msg MQTT.Me
 			log.Println(err)
 			return
 		}
-		ch <- &rfm69.Data{
+		tx <- &rfm69.Data{
 			ToAddress:  byte(node),
 			Data:       []byte{byte(pin), on},
 			RequestAck: true,
@@ -85,7 +85,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ch, quit := rfm.Loop()
+	rx, tx, quit := rfm.Loop()
 
 	sigint := make(chan os.Signal, 1)
 	signal.Notify(sigint, os.Interrupt, os.Kill)
@@ -94,7 +94,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	receipt, err := c.StartSubscription(actorHandler(ch), topicFilter)
+	receipt, err := c.StartSubscription(actorHandler(tx), topicFilter)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -102,10 +102,10 @@ func main() {
 
 	for {
 		select {
-		case data := <-ch:
+		case data := <-rx:
 			log.Println("got data")
 			if data.ToAddress != 255 && data.RequestAck {
-				ch <- &rfm69.Data{
+				tx <- &rfm69.Data{
 					ToAddress: data.FromAddress,
 					SendAck:   true,
 				}
