@@ -39,7 +39,7 @@ var f = func(client *MQTT.MqttClient, msg MQTT.Message) {
 	fmt.Printf("MSG: %s\n", msg.Payload())
 }
 
-func actorHandler(ch chan rfm69.Data) func(client *MQTT.MqttClient, msg MQTT.Message) {
+func actorHandler(ch chan *rfm69.Data) func(client *MQTT.MqttClient, msg MQTT.Message) {
 	return func(client *MQTT.MqttClient, msg MQTT.Message) {
 		command := string(msg.Payload())
 		log.Println(msg.Topic(), command)
@@ -58,7 +58,7 @@ func actorHandler(ch chan rfm69.Data) func(client *MQTT.MqttClient, msg MQTT.Mes
 			log.Println(err)
 			return
 		}
-		ch <- rfm69.Data{
+		ch <- &rfm69.Data{
 			ToAddress:  byte(node),
 			Data:       []byte{byte(pin), on},
 			RequestAck: true,
@@ -103,12 +103,12 @@ func main() {
 	for {
 		select {
 		case data := <-ch:
+			log.Println("got data")
 			if data.ToAddress != 255 && data.RequestAck {
-				resp := rfm69.Data{
+				ch <- &rfm69.Data{
 					ToAddress: data.FromAddress,
 					SendAck:   true,
 				}
-				ch <- resp
 			}
 
 			if !data.SendAck && len(data.Data) > 5 {
@@ -135,7 +135,7 @@ func main() {
 				}
 			}
 		case <-sigint:
-			quit <- 1
+			quit <- true
 			<-quit
 			c.Disconnect(250)
 			return
