@@ -76,7 +76,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	rfm, err := rfm69.NewDevice(spiBus, pin, nodeID, networkID, isRfm69Hw)
+	rfm, err := rfm69.NewDevice(nodeID, networkID, isRfm69Hw)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -104,10 +104,9 @@ func main() {
 		select {
 		case data := <-ch:
 			if data.ToAddress != 255 && data.RequestAck {
-				resp := Data{
-					FromAddress: r.address,
-					ToAddress:   data.FromAddress,
-					SendAck:     true,
+				resp := rfm69.Data{
+					ToAddress: data.FromAddress,
+					SendAck:   true,
 				}
 				ch <- resp
 			}
@@ -125,11 +124,11 @@ func main() {
 					var p1 payload1
 					binary.Read(buf, binary.LittleEndian, &p1)
 					log.Println("payload1", p1)
-					receipt = c.Publish(MQTT.QOS_ZERO, topic+"temp", fmt.Sprintf("%f", p6.Temperature))
+					receipt = c.Publish(MQTT.QOS_ZERO, topic+"temp", fmt.Sprintf("%f", p1.Temperature))
 					<-receipt
-					receipt = c.Publish(MQTT.QOS_ZERO, topic+"hum", fmt.Sprintf("%f", p6.Humidity))
+					receipt = c.Publish(MQTT.QOS_ZERO, topic+"hum", fmt.Sprintf("%f", p1.Humidity))
 					<-receipt
-					receipt = c.Publish(MQTT.QOS_ZERO, topic+"bat", fmt.Sprintf("%f", p6.VBat))
+					receipt = c.Publish(MQTT.QOS_ZERO, topic+"bat", fmt.Sprintf("%f", p1.VBat))
 					<-receipt
 				default:
 					log.Println("unknown payload")
