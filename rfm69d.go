@@ -103,22 +103,21 @@ func main() {
 	for {
 		select {
 		case data := <-rx:
+			if data.ToAddress != nodeID {
+				break
+			}
 			log.Println("got data")
 			if data.ToAddress != 255 && data.RequestAck {
-				tx <- &rfm69.Data{
-					ToAddress: data.FromAddress,
-					SendAck:   true,
-				}
+				tx <- data.ToAck()
 			}
-
-			if !data.SendAck && len(data.Data) > 5 {
+			topic := fmt.Sprintf("/sensor/%d/", data.FromAddress)
+			receipt := c.Publish(MQTT.QOS_ZERO, topic+"rssi", fmt.Sprintf("%d", data.Rssi))
+			<-receipt
+			if len(data.Data) > 5 {
 				var p payload
 				buf := bytes.NewReader(data.Data)
 				binary.Read(buf, binary.LittleEndian, &p)
 				log.Println("payload", p)
-				topic := fmt.Sprintf("/sensor/%d/", data.FromAddress)
-				receipt := c.Publish(MQTT.QOS_ZERO, topic+"rssi", fmt.Sprintf("%d", data.Rssi))
-				<-receipt
 				switch p.Type {
 				case 1:
 					var p1 payload1
