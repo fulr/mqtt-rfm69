@@ -99,6 +99,7 @@ func main() {
 		log.Fatal(err)
 	}
 	<-receipt
+	defer c.EndSubscription("/actor/#")
 
 	for {
 		select {
