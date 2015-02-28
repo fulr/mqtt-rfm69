@@ -106,7 +106,7 @@ func main() {
 			if data.ToAddress != nodeID {
 				break
 			}
-			log.Println("got data")
+			log.Println("got data, RSSI", data.Rssi)
 			if data.ToAddress != 255 && data.RequestAck {
 				tx <- data.ToAck()
 			}
