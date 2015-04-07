@@ -60,7 +60,7 @@ func actorHandler(tx chan *rfm69.Data) func(client *MQTT.MqttClient, msg MQTT.Me
 		}
 		tx <- &rfm69.Data{
 			ToAddress:  byte(node),
-			Data:       []byte{byte(pin), on},
+			Data:       []byte{2, 1, 2, 3, 4, byte(pin), on},
 			RequestAck: true,
 		}
 	}
