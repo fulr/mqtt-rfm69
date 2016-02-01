@@ -1,0 +1,6 @@
+package: github.com/fulr/rfm69/rfm69d
+import:
+- package: git.eclipse.org/gitroot/paho/org.eclipse.paho.mqtt.golang.git
+- package: github.com/fulr/rfm69
+  subpackages:
+  - payload
