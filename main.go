@@ -24,6 +24,7 @@ type Configuration struct {
 	IsRfm69Hw     bool
 	MqttBroker    string
 	MqttClientID  string
+	TopicPrefix   string
 }
 
 var defautlPubHandler = func(client *MQTT.Client, msg MQTT.Message) {
@@ -67,10 +68,10 @@ func readConfig() (*Configuration, error) {
 		return nil, err
 	}
 	decoder := json.NewDecoder(file)
-	config := Configuration{}
-	err = decoder.Decode(&config)
+	config := &Configuration{}
+	err = decoder.Decode(config)
 	file.Close()
-	return &config, err
+	return config, err
 }
 
 func main() {
@@ -102,11 +103,12 @@ func main() {
 	sigint := make(chan os.Signal, 1)
 	signal.Notify(sigint, os.Interrupt, os.Kill)
 
-	token = c.Subscribe("/actor/#", 0, actorHandler(tx))
+	actorTopic := fmt.Sprintf("%s/actor/#", config.TopicPrefix)
+	token = c.Subscribe(actorTopic, 0, actorHandler(tx))
 	if token.Wait() && token.Error() != nil {
 		log.Fatal(token.Error())
 	}
-	defer c.Unsubscribe("/actor/#")
+	defer c.Unsubscribe(actorTopic)
 
 	for {
 		select {
@@ -118,7 +120,7 @@ func main() {
 			if data.ToAddress != 255 && data.RequestAck {
 				tx <- data.ToAck()
 			}
-			topic := fmt.Sprintf("/sensor/%d/", data.FromAddress)
+			topic := fmt.Sprintf("%s/sensor/%d/", config.TopicPrefix, data.FromAddress)
 			pubToken := c.Publish(topic+"rssi", 0, false, fmt.Sprintf("%d", data.Rssi))
 			pubToken.Wait()
 			if len(data.Data) > 5 {
