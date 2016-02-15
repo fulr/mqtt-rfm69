@@ -4,5 +4,6 @@
   "NetworkID": 73,
   "IsRfm69Hw": true,
   "MqttBroker": "tcp://localhost:1883",
-  "MqttClientID": "rfmGate"
+  "MqttClientID": "rfmGate",
+  "TopicPrefix": "home"
 }
