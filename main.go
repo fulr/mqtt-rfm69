@@ -5,13 +5,12 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"strconv"
 	"strings"
 
-	MQTT "git.eclipse.org/gitroot/paho/org.eclipse.paho.mqtt.golang.git"
+	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"github.com/fulr/mqtt-rfm69/payload"
 	"github.com/fulr/rfm69"
 )
@@ -35,7 +34,7 @@ var defautlPubHandler = func(client *MQTT.Client, msg MQTT.Message) {
 func actorHandler(tx chan *rfm69.Data) func(client *MQTT.Client, msg MQTT.Message) {
 	return func(client *MQTT.Client, msg MQTT.Message) {
 		command := string(msg.Payload())
-		log.Println(msg.Topic(), command)
+		fmt.Println(msg.Topic(), command)
 		on := byte(0)
 		if command == "ON" {
 			on = 1
@@ -43,12 +42,12 @@ func actorHandler(tx chan *rfm69.Data) func(client *MQTT.Client, msg MQTT.Messag
 		parts := strings.Split(msg.Topic(), "/")
 		node, err := strconv.Atoi(parts[2])
 		if err != nil {
-			log.Println(err)
+			fmt.Println(err)
 			return
 		}
 		pin, err := strconv.Atoi(parts[3])
 		if err != nil {
-			log.Println(err)
+			fmt.Println(err)
 			return
 		}
 		buf := bytes.Buffer{}
@@ -74,29 +73,36 @@ func readConfig() (*Configuration, error) {
 	return config, err
 }
 
+func pubValue(c *MQTT.Client, topic string, suffix string, value float32) {
+	token := c.Publish(topic+suffix, 0, false, fmt.Sprintf("%f", value))
+	if token.Wait() && token.Error() != nil {
+		fmt.Println("publish error:", token.Error())
+	}
+}
+
 func main() {
-	log.Print("Reading config")
+	fmt.Println("Reading config")
 	config, err := readConfig()
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
-	log.Print(config)
+	fmt.Print(config)
 	opts := MQTT.NewClientOptions().AddBroker(config.MqttBroker).SetClientID(config.MqttClientID)
 	opts.SetDefaultPublishHandler(defautlPubHandler)
 	opts.SetCleanSession(true)
 	c := MQTT.NewClient(opts)
 	token := c.Connect()
 	if token.Wait() && token.Error() != nil {
-		log.Fatal(token.Error())
+		panic(token.Error())
 	}
 	rfm, err := rfm69.NewDevice(config.NodeID, config.NetworkID, config.IsRfm69Hw)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 	defer rfm.Close()
 	err = rfm.Encrypt([]byte(config.EncryptionKey))
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 	rx, tx, quit := rfm.Loop()
 
@@ -106,7 +112,7 @@ func main() {
 	actorTopic := fmt.Sprintf("%s/actor/#", config.TopicPrefix)
 	token = c.Subscribe(actorTopic, 0, actorHandler(tx))
 	if token.Wait() && token.Error() != nil {
-		log.Fatal(token.Error())
+		panic(token.Error())
 	}
 	defer c.Unsubscribe(actorTopic)
 
@@ -116,31 +122,27 @@ func main() {
 			if data.ToAddress != config.NodeID {
 				break
 			}
-			log.Println("got data from", data.FromAddress, ", RSSI", data.Rssi)
+			fmt.Println("got data from", data.FromAddress, ", RSSI", data.Rssi)
 			if data.ToAddress != 255 && data.RequestAck {
 				tx <- data.ToAck()
 			}
 			topic := fmt.Sprintf("%s/sensor/%d/", config.TopicPrefix, data.FromAddress)
-			pubToken := c.Publish(topic+"rssi", 0, false, fmt.Sprintf("%d", data.Rssi))
-			pubToken.Wait()
+			pubValue(c, topic, "rssi", float32(data.Rssi))
 			if len(data.Data) > 5 {
 				var p payload.Payload
 				buf := bytes.NewReader(data.Data)
 				binary.Read(buf, binary.LittleEndian, &p)
-				log.Println("payload", p)
+				fmt.Println("payload", p)
 				switch p.Type {
 				case 1:
 					var p1 payload.Payload1
 					binary.Read(buf, binary.LittleEndian, &p1)
-					log.Println("payload1", p1)
-					pubToken = c.Publish(topic+"temp", 0, false, fmt.Sprintf("%f", p1.Temperature))
-					pubToken.Wait()
-					pubToken = c.Publish(topic+"hum", 0, false, fmt.Sprintf("%f", p1.Humidity))
-					pubToken.Wait()
-					pubToken = c.Publish(topic+"bat", 0, false, fmt.Sprintf("%f", p1.VBat))
-					pubToken.Wait()
+					fmt.Println("payload1", p1)
+					pubValue(c, topic, "temp", p1.Temperature)
+					pubValue(c, topic, "hum", p1.Humidity)
+					pubValue(c, topic, "bat", p1.VBat)
 				default:
-					log.Println("unknown payload")
+					fmt.Println("unknown payload")
 				}
 			}
 		case <-sigint:
