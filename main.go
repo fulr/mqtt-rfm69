@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"github.com/fulr/mqtt-rfm69/payload"
@@ -86,7 +87,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Print(config)
+	fmt.Println(config)
 	opts := MQTT.NewClientOptions().AddBroker(config.MqttBroker).SetClientID(config.MqttClientID)
 	opts.SetDefaultPublishHandler(defautlPubHandler)
 	opts.SetCleanSession(true)
@@ -115,6 +116,8 @@ func main() {
 		panic(token.Error())
 	}
 	defer c.Unsubscribe(actorTopic)
+
+	timeout := time.After(time.Hour)
 
 	for {
 		select {
@@ -146,6 +149,11 @@ func main() {
 				}
 			}
 		case <-sigint:
+			quit <- true
+			<-quit
+			c.Disconnect(250)
+			return
+		case <-timeout:
 			quit <- true
 			<-quit
 			c.Disconnect(250)
