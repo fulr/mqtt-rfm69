@@ -1,9 +1,0 @@
-{
-  "EncryptionKey": "0123456789012345",
-  "NodeID": 1,
-  "NetworkID": 73,
-  "IsRfm69Hw": true,
-  "MqttBroker": "tcp://localhost:1883",
-  "MqttClientID": "rfmGate",
-  "TopicPrefix": "home"
-}
