@@ -3,13 +3,12 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"strconv"
 	"strings"
-	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"github.com/fulr/mqtt-rfm69/payload"
@@ -17,15 +16,6 @@ import (
 )
 
 // Configuration defines the config options and file structure
-type Configuration struct {
-	EncryptionKey string
-	NodeID        byte
-	NetworkID     byte
-	IsRfm69Hw     bool
-	MqttBroker    string
-	MqttClientID  string
-	TopicPrefix   string
-}
 
 var defautlPubHandler = func(client *MQTT.Client, msg MQTT.Message) {
 	fmt.Printf("TOPIC: %s\n", msg.Topic())
@@ -62,18 +52,6 @@ func actorHandler(tx chan *rfm69.Data) func(client *MQTT.Client, msg MQTT.Messag
 	}
 }
 
-func readConfig() (*Configuration, error) {
-	file, err := os.Open("/etc/rfm69/conf.json")
-	if err != nil {
-		return nil, err
-	}
-	decoder := json.NewDecoder(file)
-	config := &Configuration{}
-	err = decoder.Decode(config)
-	file.Close()
-	return config, err
-}
-
 func pubValue(c *MQTT.Client, topic string, suffix string, value float32) {
 	token := c.Publish(topic+suffix, 0, false, fmt.Sprintf("%f", value))
 	if token.Wait() && token.Error() != nil {
@@ -82,54 +60,56 @@ func pubValue(c *MQTT.Client, topic string, suffix string, value float32) {
 }
 
 func main() {
-	fmt.Println("Reading config")
-	config, err := readConfig()
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(config)
-	opts := MQTT.NewClientOptions().AddBroker(config.MqttBroker).SetClientID(config.MqttClientID)
-	opts.SetDefaultPublishHandler(defautlPubHandler)
-	opts.SetCleanSession(true)
-	c := MQTT.NewClient(opts)
-	token := c.Connect()
-	if token.Wait() && token.Error() != nil {
-		panic(token.Error())
-	}
-	rfm, err := rfm69.NewDevice(config.NodeID, config.NetworkID, config.IsRfm69Hw)
+	encryptionKey := flag.String("key", "0123456789012345", "Encryption key for the RFM69 module")
+	nodeID := flag.Int("nodeid", 1, "NodeID in the RFM69 network")
+	networkID := flag.Int("networkid", 73, "RFM69 network ID")
+	isRfm69Hw := flag.Bool("ishw", true, "Enable RFM69HW high power mode")
+	mqttBroker := flag.String("broker", "tcp://localhost:1883", "MQTT broker URL")
+	mqttClientID := flag.String("clientid", "rfmGate", "MQTT client ID")
+	topicPrefix := flag.String("prefix", "home", "MQTT topic prefix")
+	flag.Parse()
+
+	rfm, err := rfm69.NewDevice(byte(*nodeID), byte(*networkID), *isRfm69Hw)
 	if err != nil {
 		panic(err)
 	}
 	defer rfm.Close()
-	err = rfm.Encrypt([]byte(config.EncryptionKey))
+	err = rfm.Encrypt([]byte(*encryptionKey))
 	if err != nil {
 		panic(err)
 	}
 	rx, tx, quit := rfm.Loop()
 
-	sigint := make(chan os.Signal, 1)
-	signal.Notify(sigint, os.Interrupt, os.Kill)
+	opts := MQTT.NewClientOptions()
+	opts.AddBroker(*mqttBroker)
+	opts.SetClientID(*mqttClientID)
+	opts.SetDefaultPublishHandler(defautlPubHandler)
+	opts.SetCleanSession(true)
+	opts.OnConnect = func(c *MQTT.Client) {
+		fmt.Println("MQTT connect")
+		c.Subscribe(strings.Join([]string{*topicPrefix, "actor", "#"}, "/"), 0, actorHandler(tx))
+	}
 
-	actorTopic := fmt.Sprintf("%s/actor/#", config.TopicPrefix)
-	token = c.Subscribe(actorTopic, 0, actorHandler(tx))
+	c := MQTT.NewClient(opts)
+	token := c.Connect()
 	if token.Wait() && token.Error() != nil {
 		panic(token.Error())
 	}
-	defer c.Unsubscribe(actorTopic)
 
-	timeout := time.After(time.Hour)
+	sigint := make(chan os.Signal, 1)
+	signal.Notify(sigint, os.Interrupt, os.Kill)
 
 	for {
 		select {
 		case data := <-rx:
-			if data.ToAddress != config.NodeID {
+			if data.ToAddress != byte(*nodeID) {
 				break
 			}
 			fmt.Println("got data from", data.FromAddress, ", RSSI", data.Rssi)
 			if data.ToAddress != 255 && data.RequestAck {
 				tx <- data.ToAck()
 			}
-			topic := fmt.Sprintf("%s/sensor/%d/", config.TopicPrefix, data.FromAddress)
+			topic := fmt.Sprintf("%s/sensor/%d/", *topicPrefix, data.FromAddress)
 			pubValue(c, topic, "rssi", float32(data.Rssi))
 			if len(data.Data) > 5 {
 				var p payload.Payload
@@ -149,11 +129,6 @@ func main() {
 				}
 			}
 		case <-sigint:
-			quit <- true
-			<-quit
-			c.Disconnect(250)
-			return
-		case <-timeout:
 			quit <- true
 			<-quit
 			c.Disconnect(250)
