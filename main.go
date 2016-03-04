@@ -22,7 +22,7 @@ var defautlPubHandler = func(client *MQTT.Client, msg MQTT.Message) {
 	fmt.Printf("MSG: %s\n", msg.Payload())
 }
 
-func actorHandler(tx chan *rfm69.Data) func(client *MQTT.Client, msg MQTT.Message) {
+func actorHandler(r *rfm69.Device) func(client *MQTT.Client, msg MQTT.Message) {
 	return func(client *MQTT.Client, msg MQTT.Message) {
 		command := string(msg.Payload())
 		fmt.Println(msg.Topic(), command)
@@ -44,11 +44,11 @@ func actorHandler(tx chan *rfm69.Data) func(client *MQTT.Client, msg MQTT.Messag
 		buf := bytes.Buffer{}
 		binary.Write(&buf, binary.LittleEndian, payload.Payload{Type: 2, Uptime: 1})
 		binary.Write(&buf, binary.LittleEndian, payload.Payload2{Pin: byte(pin), State: on})
-		tx <- &rfm69.Data{
+		r.Send(&rfm69.Data{
 			ToAddress:  byte(node),
 			Data:       buf.Bytes(),
 			RequestAck: true,
-		}
+		})
 	}
 }
 
@@ -74,11 +74,16 @@ func main() {
 		panic(err)
 	}
 	defer rfm.Close()
+
+	rx := make(chan *rfm69.Data)
+	rfm.OnReceive = func(d *rfm69.Data) {
+		rx <- d
+	}
+
 	err = rfm.Encrypt([]byte(*encryptionKey))
 	if err != nil {
 		panic(err)
 	}
-	rx, tx, quit := rfm.Loop()
 
 	opts := MQTT.NewClientOptions()
 	opts.AddBroker(*mqttBroker)
@@ -87,7 +92,7 @@ func main() {
 	opts.SetCleanSession(true)
 	opts.OnConnect = func(c *MQTT.Client) {
 		fmt.Println("MQTT connect")
-		c.Subscribe(strings.Join([]string{*topicPrefix, "actor", "#"}, "/"), 0, actorHandler(tx))
+		c.Subscribe(strings.Join([]string{*topicPrefix, "actor", "#"}, "/"), 0, actorHandler(rfm))
 	}
 
 	c := MQTT.NewClient(opts)
@@ -99,7 +104,9 @@ func main() {
 	sigint := make(chan os.Signal, 1)
 	signal.Notify(sigint, os.Interrupt, os.Kill)
 
-	for {
+	running := true
+
+	for running {
 		select {
 		case data := <-rx:
 			if data.ToAddress != byte(*nodeID) {
@@ -107,7 +114,7 @@ func main() {
 			}
 			fmt.Println("got data from", data.FromAddress, ", RSSI", data.Rssi)
 			if data.ToAddress != 255 && data.RequestAck {
-				tx <- data.ToAck()
+				rfm.Send(data.ToAck())
 			}
 			topic := fmt.Sprintf("%s/sensor/%d/", *topicPrefix, data.FromAddress)
 			pubValue(c, topic, "rssi", float32(data.Rssi))
@@ -129,10 +136,8 @@ func main() {
 				}
 			}
 		case <-sigint:
-			quit <- true
-			<-quit
-			c.Disconnect(250)
-			return
+			running = false
 		}
 	}
+	c.Disconnect(250)
 }
