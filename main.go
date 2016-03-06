@@ -76,7 +76,7 @@ func main() {
 	}
 	defer rfm.Close()
 
-	rx := make(chan *rfm69.Data)
+	rx := make(chan *rfm69.Data, 5)
 	rfm.OnReceive = func(d *rfm69.Data) {
 		rx <- d
 	}
