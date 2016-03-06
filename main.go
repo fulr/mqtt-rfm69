@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"github.com/fulr/mqtt-rfm69/payload"
@@ -54,7 +55,7 @@ func actorHandler(r *rfm69.Device) func(client *MQTT.Client, msg MQTT.Message) {
 
 func pubValue(c *MQTT.Client, topic string, suffix string, value float32) {
 	token := c.Publish(topic+suffix, 0, false, fmt.Sprintf("%f", value))
-	if token.Wait() && token.Error() != nil {
+	if token.WaitTimeout(5*time.Second) && token.Error() != nil {
 		fmt.Println("publish error:", token.Error())
 	}
 }
@@ -97,7 +98,7 @@ func main() {
 
 	c := MQTT.NewClient(opts)
 	token := c.Connect()
-	if token.Wait() && token.Error() != nil {
+	if token.WaitTimeout(5*time.Second) && token.Error() != nil {
 		panic(token.Error())
 	}
 
