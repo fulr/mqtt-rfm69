@@ -122,12 +122,20 @@ func main() {
 			if len(data.Data) > 5 {
 				var p payload.Payload
 				buf := bytes.NewReader(data.Data)
-				binary.Read(buf, binary.LittleEndian, &p)
+				err = binary.Read(buf, binary.LittleEndian, &p)
+				if err != nil {
+					fmt.Println("error reading paylod")
+					break
+				}
 				fmt.Println("payload", p)
 				switch p.Type {
 				case 1:
 					var p1 payload.Payload1
-					binary.Read(buf, binary.LittleEndian, &p1)
+					err = binary.Read(buf, binary.LittleEndian, &p1)
+					if err != nil {
+						fmt.Println("error reading paylod")
+						break
+					}
 					fmt.Println("payload1", p1)
 					pubValue(c, topic, "temp", p1.Temperature)
 					pubValue(c, topic, "hum", p1.Humidity)
