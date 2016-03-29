@@ -9,29 +9,25 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
-	"time"
 
-	MQTT "github.com/eclipse/paho.mqtt.golang"
 	"github.com/fulr/mqtt-rfm69/payload"
 	"github.com/fulr/rfm69"
+	"github.com/yosssi/gmq/mqtt"
+	"github.com/yosssi/gmq/mqtt/client"
 )
 
 // Configuration defines the config options and file structure
 
-var defautlPubHandler = func(client *MQTT.Client, msg MQTT.Message) {
-	fmt.Printf("TOPIC: %s\n", msg.Topic())
-	fmt.Printf("MSG: %s\n", msg.Payload())
-}
-
-func actorHandler(r *rfm69.Device) func(client *MQTT.Client, msg MQTT.Message) {
-	return func(client *MQTT.Client, msg MQTT.Message) {
-		command := string(msg.Payload())
-		fmt.Println(msg.Topic(), command)
+func actorHandler(r *rfm69.Device) func(topic, message []byte) {
+	return func(topic, message []byte) {
+		command := string(message)
+		topicstr := string(topic)
+		fmt.Println(topicstr, command)
 		on := byte(0)
 		if command == "ON" {
 			on = 1
 		}
-		parts := strings.Split(msg.Topic(), "/")
+		parts := strings.Split(topicstr, "/")
 		node, err := strconv.Atoi(parts[2])
 		if err != nil {
 			fmt.Println(err)
@@ -53,11 +49,12 @@ func actorHandler(r *rfm69.Device) func(client *MQTT.Client, msg MQTT.Message) {
 	}
 }
 
-func pubValue(c *MQTT.Client, topic string, suffix string, value float32) {
-	token := c.Publish(topic+suffix, 0, false, fmt.Sprintf("%f", value))
-	if token.WaitTimeout(5*time.Second) && token.Error() != nil {
-		fmt.Println("publish error:", token.Error())
-	}
+func pubValue(c *client.Client, topic string, suffix string, value float32) error {
+	return c.Publish(&client.PublishOptions{
+		QoS:       mqtt.QoS0,
+		TopicName: []byte(topic + suffix),
+		Message:   []byte(fmt.Sprintf("%f", value)),
+	})
 }
 
 func main() {
@@ -65,7 +62,7 @@ func main() {
 	nodeID := flag.Int("nodeid", 1, "NodeID in the RFM69 network")
 	networkID := flag.Int("networkid", 73, "RFM69 network ID")
 	isRfm69Hw := flag.Bool("ishw", true, "Enable RFM69HW high power mode")
-	mqttBroker := flag.String("broker", "tcp://localhost:1883", "MQTT broker URL")
+	mqttBroker := flag.String("broker", "localhost:1883", "MQTT broker URL")
 	mqttClientID := flag.String("clientid", "rfmGate", "MQTT client ID")
 	topicPrefix := flag.String("prefix", "home", "MQTT topic prefix")
 	flag.Parse()
@@ -86,20 +83,35 @@ func main() {
 		panic(err)
 	}
 
-	opts := MQTT.NewClientOptions()
-	opts.AddBroker(*mqttBroker)
-	opts.SetClientID(*mqttClientID)
-	opts.SetDefaultPublishHandler(defautlPubHandler)
-	opts.SetCleanSession(true)
-	opts.OnConnect = func(c *MQTT.Client) {
-		fmt.Println("MQTT connect")
-		c.Subscribe(strings.Join([]string{*topicPrefix, "actor", "#"}, "/"), 0, actorHandler(rfm))
+	cliOpts := client.Options{
+		ErrorHandler: func(err error) {
+			fmt.Println(err)
+		},
+	}
+	connOpts := client.ConnectOptions{
+		Network:  "tcp",
+		Address:  *mqttBroker,
+		ClientID: []byte(*mqttClientID),
+	}
+	cli := client.New(&cliOpts)
+	defer cli.Terminate()
+
+	err = cli.Connect(&connOpts)
+	if err != nil {
+		panic(err)
 	}
 
-	c := MQTT.NewClient(opts)
-	token := c.Connect()
-	if token.WaitTimeout(5*time.Second) && token.Error() != nil {
-		panic(token.Error())
+	err = cli.Subscribe(&client.SubscribeOptions{
+		SubReqs: []*client.SubReq{
+			&client.SubReq{
+				TopicFilter: []byte(strings.Join([]string{*topicPrefix, "actor", "#"}, "/")),
+				QoS:         mqtt.QoS0,
+				Handler:     actorHandler(rfm),
+			},
+		},
+	})
+	if err != nil {
+		panic(err)
 	}
 
 	sigint := make(chan os.Signal, 1)
@@ -118,7 +130,7 @@ func main() {
 				rfm.Send(data.ToAck())
 			}
 			topic := fmt.Sprintf("%s/sensor/%d/", *topicPrefix, data.FromAddress)
-			pubValue(c, topic, "rssi", float32(data.Rssi))
+			pubValue(cli, topic, "rssi", float32(data.Rssi))
 			if len(data.Data) > 5 {
 				var p payload.Payload
 				buf := bytes.NewReader(data.Data)
@@ -137,9 +149,9 @@ func main() {
 						break
 					}
 					fmt.Println("payload1", p1)
-					pubValue(c, topic, "temp", p1.Temperature)
-					pubValue(c, topic, "hum", p1.Humidity)
-					pubValue(c, topic, "bat", p1.VBat)
+					pubValue(cli, topic, "temp", p1.Temperature)
+					pubValue(cli, topic, "hum", p1.Humidity)
+					pubValue(cli, topic, "bat", p1.VBat)
 				default:
 					fmt.Println("unknown payload")
 				}
@@ -148,5 +160,4 @@ func main() {
 			running = false
 		}
 	}
-	c.Disconnect(250)
 }

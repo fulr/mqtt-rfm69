@@ -1,4 +1,4 @@
 package: github.com/fulr/mqtt-rfm69
 import:
-- package: github.com/eclipse/paho.mqtt.golang
 - package: github.com/fulr/rfm69
+- package: github.com/yosssi/gmq
